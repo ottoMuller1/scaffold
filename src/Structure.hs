@@ -1,7 +1,8 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE DataKinds #-}
-{-#LANGUAGE GADTs #-}
+{-# LANGUAGE GADTs #-}
 {-# LANGUAGE FlexibleInstances #-}
+
 module Structure ( 
     Structure ( .. ) ) where
 
