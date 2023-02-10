@@ -2,9 +2,9 @@ name:                scaffold
 version:             0.1.0.0
 github:              "githubuser/scaffold"
 license:             BSD3
-author:              "Author name here"
-maintainer:          "example@example.com"
-copyright:           "2022 Author name here"
+author:              "ottoMuller"
+maintainer:          "otto.muller.general@gmail.com"
+copyright:           "2022 Lev Sedov"
 
 extra-source-files:
 - README.md
@@ -21,6 +21,7 @@ description:         Please see the README on GitHub at <https://github.com/gith
 
 dependencies:
 - base >= 4.7 && < 5
+- ghc-prim
 
 ghc-options:
 - -Wall
