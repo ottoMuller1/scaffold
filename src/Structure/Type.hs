@@ -13,10 +13,10 @@
 module Structure.Type ( 
     Algebraic ( .. ),
     StructureType ( .. ),
-    StructureFamilyMember ( .. ),
+    Structure ( .. ),
     Equiv ( .. ),
     Separator ( .. ),
-    Mod,
+    Mod ( .. ),
     Marker ( .. ) ) where
 
 -------------------------imports--------------------------------
@@ -31,44 +31,105 @@ type Operation a = a -> a -> a
 
 
 -- structure ( doesn't mean "algebraic" ) type
-data StructureType = Simple | Tree | Arrow
+-- Show, Eq
+data StructureType = Simple | Tree | Arrow | Graph deriving ( Show, Eq )
 
 
 -- equivalense family
+-- used in data class Equiv
+{-
+using like 
+a === b mod q, where q is equivalence
+
+data instance Mod "q" = ModQ
+instance ( a ~ Mod "q" ) => Marker a
+    marker = ModQ
+instance Equiv ( Mod "q" ) `some type` where
+    ( a === b ) ModQ = ...
+    ...
+-}
 data family Mod ( a :: Symbol )
 
+-- Show, Eq, Marker
 data instance Mod "default" = ModDefault
 
 
 -- helpful type to separate results of Equiv functions
+-- Functor, Show, Eq
 data Separator a = Sure a | Incorrect | No deriving ( Functor, Show, Eq )
 
 
 -- a structure data family ( not algebraic )
-data family StructureFamilyMember ( a :: StructureType ) ( b :: Type )
+data family Structure ( a :: StructureType ) ( b :: Type )
 
-data instance StructureFamilyMember 'Simple a where
-    Rhombus :: Algebraic a => a -> ( a, a ) -> a -> StructureFamilyMember 'Simple a
-    Order :: Algebraic a => a -> a -> StructureFamilyMember 'Simple a
-    Dot :: Algebraic a => a -> StructureFamilyMember 'Simple a
+-- Show, Eq, Foldable, Ord, Algebraic, Equiv
+data instance Structure 'Simple a where
+    Rhombus :: Algebraic a => a -> ( a, a ) -> a -> Structure 'Simple a
+    Order :: Algebraic a => a -> a -> Structure 'Simple a
+    Dot :: Algebraic a => a -> Structure 'Simple a
 
-data instance StructureFamilyMember 'Tree a =
-    Node a ( StructureFamilyMember 'Tree a ) ( StructureFamilyMember 'Tree a ) | EmptyTree
+-- Eq, Ord, Foldable, Functor, Equiv
+data instance Structure 'Tree a =
+    Node a ( Structure 'Tree a ) ( Structure 'Tree a ) | EmptyTree
 
-data instance StructureFamilyMember 'Arrow a where
-    ( :-> ) :: a -> a -> StructureFamilyMember 'Arrow a
+-- Show, Eq, Semigroup, Functor
+data instance Structure 'Arrow a where
+    ( :-> ) :: a -> a -> Structure 'Arrow a
+
+-- Show, Eq, Ord
+data instance Structure 'Graph a where
+    {-
+        a graph member to build a custom graph
+        using
+
+        a :--- (b, Just 5)
+        a :--> (b, Nothing)
+        ...
+    -}
+    Noose :: ( Eq a, Show b ) => a -> Maybe b -> Structure 'Graph a
+    ( :--- ) :: ( Eq a, Show b ) => a -> ( a, Maybe b ) -> Structure 'Graph a
+    ( :--> ) :: ( Eq a, Show b ) => a -> ( a, Maybe b ) -> Structure 'Graph a
+    ( :<-> ) :: ( Eq a, Show b ) => a -> ( a, Maybe b ) -> Structure 'Graph a
+    NoGraph :: Eq a => Structure 'Graph a
 
 ----------------------class declarations------------------------
 {-
-Structure is a set* where for all a, b from set* 
+Algebraic Structure is a set* where for all a, b from set* 
 exists inf (a, b), sup (a, b) from set*
 -}
 class Ord a => Algebraic a where
     ( /\ ) :: Operation a  -- associative, commutative, absorbing
-    ( \/ ) :: Operation a  -- associative, commutative, absorbing 
+    ( \/ ) :: Operation a  -- associative, commutative, absorbing
+
+    dot :: a -> Structure 'Simple a
+    dot = Dot
+
+    ( <+> ) :: a -> a -> Structure 'Simple a
+    a <+> b
+        | a > b = Order b a
+        | b > a = Order a b
+        | a == b = Dot a
+        | otherwise = Rhombus ( a \/ b ) ( a, b ) ( a /\ b )
+
+    rhombus :: a -> a -> a -> a -> Maybe ( Structure 'Simple a )
+    rhombus a b c d
+        | b > a && c > a && d > b && d > c && not ( b > c ) && not ( c > b ) = Just $ Rhombus a ( b, c ) d
+        | otherwise = Nothing
+
+    {-# MINIMAL ( /\ ), ( \/ ) #-}
 
 {-
 helpful class to make some type a marker
+this is a marker for Equiv data class
+
+using 
+
+data MyType = MyType
+instance Marker MyType where
+    marker = MyType
+instance Equiv `some type` where
+    ( a === b ) MyType = ...
+    ...
 -}
 class Marker a where
     marker :: a
@@ -77,17 +138,17 @@ class Marker a where
 Equivalence is a relation that is transitive, reflexive and symmetric at the same time
 -}
 class ( Eq a, Marker b ) => Equiv b a where
-    refl :: b -> a -> Separator ( StructureFamilyMember 'Arrow a )
-    trans :: b -> StructureFamilyMember 'Arrow a -> StructureFamilyMember 'Arrow a -> Separator ( StructureFamilyMember 'Arrow a )
-    sym :: b -> StructureFamilyMember 'Arrow a -> Separator ( StructureFamilyMember 'Arrow a )
+    refl :: b -> a -> Separator ( Structure 'Arrow a )
+    trans :: b -> Structure 'Arrow a -> Structure 'Arrow a -> Separator ( Structure 'Arrow a )
+    sym :: b -> Structure 'Arrow a -> Separator ( Structure 'Arrow a )
     ( === ) :: a -> a -> b -> Bool
     -- default options
-    refl marker a = Sure $ a :-> a
-    trans marker ( a :-> b ) ( b' :-> c )
+    refl _ a = Sure $ a :-> a
+    trans _ ( a :-> b ) ( b' :-> c )
         | b /= b' = Incorrect
         | a /= b || b' /= c = No
         | otherwise = Sure $ a :-> c
-    sym marker ( a :-> b )
+    sym _ ( a :-> b )
         | a == b = Sure $ b :-> a
         | otherwise = No
     ( a === b ) marker = 
@@ -99,16 +160,34 @@ class ( Eq a, Marker b ) => Equiv b a where
 
 ------------------------------instances-------------------------
 --- - - - - - - - - - - - Show - - - - - - - - - - - ---
-instance Show a => Show ( StructureFamilyMember 'Simple a ) where
+instance Show a => Show ( Structure 'Simple a ) where
     show ( Order a b ) = show a ++ " -> " ++ show b ++ "\n"
     show ( Rhombus a b c ) = show a ++ " -> " ++ show b ++ " -> " ++ show c ++ "\n"
     show ( Dot a ) = "dot " ++ show a ++ "\n"
 
-instance Show a => Show ( StructureFamilyMember 'Arrow a ) where
+instance Show a => Show ( Structure 'Arrow a ) where
     show ( a :-> b ) = show a ++ " |-> " ++ show b
 
+instance Show a => Show ( Structure 'Graph a ) where
+    show ( Noose a ( Just b ) ) = show a ++ " " ++ show b
+    show ( Noose a Nothing ) = show a
+    show NoGraph = "no graph"
+    show ( a :--- ( b, Just c ) ) = show a ++ " --- " ++ show b ++ " " ++ show c
+    show ( a :--- ( b, Nothing ) ) = show a ++ " --- " ++ show b
+    show ( a :--> ( b, Just c ) ) = show a ++ " --> " ++ show b ++ " " ++ show c
+    show ( a :--> ( b, Nothing ) ) = show a ++ " --> " ++ show b
+    show ( a :<-> ( b, Just c ) ) = show a ++ " <-> " ++ show b ++ " " ++ show c
+    show ( a :<-> ( b, Nothing ) ) = show a ++ " <-> " ++ show b
+
+instance Show ( Mod "default" ) where
+    show ModDefault = "default equivalence"
+
+--- - - - - - - - - - - Semigroup - - - - - - - - - - ---
+instance Algebraic a => Semigroup ( Structure 'Arrow a ) where
+    ( a :-> b ) <> ( a' :-> b' ) = ( a \/ a' ) :-> ( b /\ b' )
+
 --- - - - - - - - - - - - - - Eq - - - - - - - - - - ---
-instance Eq a => Eq ( StructureFamilyMember 'Simple a ) where
+instance Eq a => Eq ( Structure 'Simple a ) where
     Dot a == Dot b = a == b
     Order a b == Order a' b' = a == a' && b == b'
     Rhombus a ( b1, b2 ) c == Rhombus a' ( b1', b2' ) c' = 
@@ -117,17 +196,46 @@ instance Eq a => Eq ( StructureFamilyMember 'Simple a ) where
         ( ( b1 == b1' && b2 == b2' ) || ( b1 == b2' && b2 == b1' ) )
     _ == _ = False
 
-instance Eq a => Eq ( StructureFamilyMember 'Arrow a ) where
+instance Eq a => Eq ( Structure 'Tree a ) where
+    EmptyTree == EmptyTree = True
+    EmptyTree == _ = False
+    _ == EmptyTree = False
+    ( Node a left right ) == ( Node a' left' right' ) = a == a' && left == left' && right == right'
+
+instance Eq a => Eq ( Structure 'Arrow a ) where
     ( a :-> b ) == ( a' :-> b' ) = a == a' && b == b'
 
+instance Eq ( Structure 'Graph a ) where
+    ( a :--- b ) == ( a' :--- b' ) = a == a' && fst b == fst b'
+    ( a :--> b ) == ( a' :--> b' ) = a == a' && fst b == fst b'
+    ( a :<-> b ) == ( a' :<-> b' ) = a == a' && fst b == fst b'
+    Noose a _ == Noose a' _ = a == a'
+    NoGraph == NoGraph = True
+    _ == _ = False
+
+instance Eq ( Mod "default" ) where
+    ModDefault == ModDefault = True
+
 --- - - - - - - - - - - - Foldable - - - - - - - - - - - ---
-instance Foldable ( StructureFamilyMember 'Simple ) where
+instance Foldable ( Structure 'Simple ) where
     foldr f b ( Dot a ) = f a b
     foldr f b ( Order a a' ) = f a $ f a' b
     foldr f b ( Rhombus a ( a', a'' ) a''' ) = f a $ f a' $ f a'' $ f a''' b
 
+instance Foldable ( Structure 'Tree ) where
+    foldr _ b EmptyTree = b
+    foldr f b ( Node a left right ) = foldr f ( f a $ foldr f b right ) left
+
+--- - - - - - - - - - - - - - Functor - - - - - - - - - ---
+instance Functor ( Structure 'Tree ) where
+    fmap _ EmptyTree = EmptyTree
+    fmap f ( Node a left right ) = Node ( f a ) ( fmap f left ) ( fmap f right )
+
+instance Functor ( Structure 'Arrow ) where
+    fmap f ( a :-> b ) = ( f a ) :-> ( f b )
+
 --- - - - - - - - - - - - - - Ord - - - - - - - - - - ---
-instance Algebraic a => Ord ( StructureFamilyMember 'Simple a ) where
+instance Algebraic a => Ord ( Structure 'Simple a ) where
     Dot a <= Dot b = a <= b
     Order a b <= Order a' b' = a \/ a' == a' && b /\ b' == b'
     Rhombus a _ c <= Rhombus a' _ c' = 
@@ -137,13 +245,45 @@ instance Algebraic a => Ord ( StructureFamilyMember 'Simple a ) where
     Order a b <= right = any ( == a ) right && any ( == b ) right
     _ <= _ = False
 
+instance Eq a => Ord ( Structure 'Tree a ) where
+    EmptyTree <= EmptyTree = True
+    ( Node _ _ _ ) <= EmptyTree = False
+    a <= ( Node _ left' right' ) = a == left' || a == right'
+
+instance Ord ( Structure 'Graph a ) where
+    Noose a _ <= Noose b _ = a == b
+    Noose a _ <= ( b :--- ( c, _ ) ) = a == b || a == c
+    Noose a _ <= ( _ :--> ( c, _ ) ) = c == a
+    Noose a _ <= ( b :<-> ( c, _ ) ) = a == b || a == c
+    Noose _ _ <= NoGraph = False
+
+    NoGraph <= _ = False
+
+    ( a :--- ( b, _ ) ) <= Noose d _ = a == d || b == d
+    ( a :--- ( b, _ ) ) <= ( a' :--- ( b', _ ) ) = a == a' || b == a' || a == b' || b == b'
+    ( a :--- ( b, _ ) ) <= ( _ :--> ( b', _ ) ) = a == b' || b == b'
+    ( a :--- ( b, _ ) ) <= ( a' :<-> ( b', _ ) ) = a == a' || b == a' || a == b' || b == b'
+    ( _ :--- _ ) <= NoGraph = False
+
+    ( a :--> _ ) <= Noose b _ = b == a
+    ( a :--> _ ) <= ( a' :--- ( b', _ ) ) = a == b' || a == a'
+    ( a :--> _ ) <= ( _ :--> ( b', _ ) ) = a == b'
+    ( a :--> _ ) <= ( a' :<-> ( b', _ ) ) = a == b' || a == a'
+    ( _ :--> _ ) <= NoGraph = False
+
+    ( a :<-> ( b, _ ) ) <= Noose d _ = a == d || b == d
+    ( a :<-> ( b, _ ) ) <= ( a' :--- ( b', _ ) ) = a == a' || b == a' || a == b' || b == b'
+    ( a :<-> ( b, _ ) ) <= ( _ :--> ( b', _ ) ) = a == b' || b == b'
+    ( a :<-> ( b, _ ) ) <= ( a' :<-> ( b', _ ) ) = a == a' || b == a' || a == b' || b == b'
+    ( _ :<-> _ ) <= NoGraph = False
+
 --- - - - - - - - - - - - - Marker - - - - - - - - - - - - - ---
 -- this is a typical approach to derive Marker for every Mod example
 instance ( a ~ Mod "default" ) => Marker a where
     marker = ModDefault
 
 --- - - - - - - - - - - - Equiv - - - - - - - - - - - - - ---
-instance Algebraic a => Equiv ( Mod "default" ) ( StructureFamilyMember 'Simple a ) where
+instance Algebraic a => Equiv ( Mod "default" ) ( Structure 'Simple a ) where
     ( Dot a === Dot b ) ModDefault = not ( a > b ) || not ( b > a )
     ( Order _ b === Order _ b' ) ModDefault = 
         not ( b' >= b ) || not ( b >= b' )
@@ -154,6 +294,8 @@ instance Algebraic a => Equiv ( Mod "default" ) ( StructureFamilyMember 'Simple 
         h <= g' ||
         h <= h'
     ( _ === _ ) ModDefault = False
+
+instance Eq a => Equiv ( Mod "default" ) ( Structure 'Tree a )
 
 -- default instances
 instance Eq a => Equiv ( Mod "default" ) [ a ] where
@@ -180,7 +322,7 @@ instance Equiv ( Mod "default" ) ()
 instance Eq a => Equiv ( Mod "default" ) ( Maybe a )
 
 --- - - - - - - - - - - - Structure - - - - - - - - - - - ---
-instance Algebraic a => Algebraic ( StructureFamilyMember 'Simple a ) where
+instance Algebraic a => Algebraic ( Structure 'Simple a ) where
     Dot a /\ Dot b
         | a > b = Order b a
         | b > a = Order a b
