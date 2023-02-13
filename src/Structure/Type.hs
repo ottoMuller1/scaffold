@@ -42,7 +42,7 @@ using like
 a === b mod q, where q is equivalence
 
 data instance Mod "q" = ModQ
-instance ( a ~ Mod "q" ) => Marker a
+instance Marker ( Mod "q" ) where
     marker = ModQ
 instance Equiv ( Mod "q" ) `some type` where
     ( a === b ) ModQ = ...
