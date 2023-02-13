@@ -32,7 +32,7 @@ type Operation a = a -> a -> a
 
 -- structure ( doesn't mean "algebraic" ) type
 -- Show, Eq
-data StructureType = Simple | Tree | Arrow | Graph deriving ( Show, Eq )
+data StructureType = Simple | Tree | Arrow | Relation deriving ( Show, Eq )
 
 
 -- equivalense family
@@ -52,6 +52,12 @@ data family Mod ( a :: Symbol )
 
 -- Show, Eq, Marker
 data instance Mod "default" = ModDefault
+
+-- Show, Eq, Marker
+data instance Mod "relation type" = RelationType
+
+-- Show, Eq, Marker
+data instance Mod "relation weight" = RelationWeight
 
 
 -- helpful type to separate results of Equiv functions
@@ -77,7 +83,7 @@ data instance Structure 'Arrow a where
     ( :-> ) :: a -> a -> Structure 'Arrow a
 
 -- Show, Eq, Ord
-data instance Structure 'Graph a where
+data instance Structure 'Relation a where
     {-
         a graph member to build a custom graph
         using
@@ -86,11 +92,11 @@ data instance Structure 'Graph a where
         a :--> (b, Nothing)
         ...
     -}
-    Noose :: ( Eq a, Show b ) => a -> Maybe b -> Structure 'Graph a
-    ( :--- ) :: ( Eq a, Show b ) => a -> ( a, Maybe b ) -> Structure 'Graph a
-    ( :--> ) :: ( Eq a, Show b ) => a -> ( a, Maybe b ) -> Structure 'Graph a
-    ( :<-> ) :: ( Eq a, Show b ) => a -> ( a, Maybe b ) -> Structure 'Graph a
-    NoGraph :: Eq a => Structure 'Graph a
+    Noose :: ( Eq a, Show b ) => a -> Maybe b -> Structure 'Relation a
+    ( :--- ) :: ( Eq a, Show b ) => a -> ( a, Maybe b ) -> Structure 'Relation a
+    ( :--> ) :: ( Eq a, Show b ) => a -> ( a, Maybe b ) -> Structure 'Relation a
+    ( :<-> ) :: ( Eq a, Show b ) => a -> ( a, Maybe b ) -> Structure 'Relation a
+    NoGraph :: Eq a => Structure 'Relation a
 
 ----------------------class declarations------------------------
 {-
@@ -168,7 +174,7 @@ instance Show a => Show ( Structure 'Simple a ) where
 instance Show a => Show ( Structure 'Arrow a ) where
     show ( a :-> b ) = show a ++ " |-> " ++ show b
 
-instance Show a => Show ( Structure 'Graph a ) where
+instance Show a => Show ( Structure 'Relation a ) where
     show ( Noose a ( Just b ) ) = show a ++ " " ++ show b
     show ( Noose a Nothing ) = show a
     show NoGraph = "no graph"
@@ -181,6 +187,12 @@ instance Show a => Show ( Structure 'Graph a ) where
 
 instance Show ( Mod "default" ) where
     show ModDefault = "default equivalence"
+
+instance Show ( Mod "relation type" ) where
+    show RelationType = "the same type of relation"
+
+instance Show ( Mod "relation weight" ) where
+    show RelationWeight = "the same weight of relation"
 
 --- - - - - - - - - - - Semigroup - - - - - - - - - - ---
 instance Algebraic a => Semigroup ( Structure 'Arrow a ) where
@@ -205,7 +217,7 @@ instance Eq a => Eq ( Structure 'Tree a ) where
 instance Eq a => Eq ( Structure 'Arrow a ) where
     ( a :-> b ) == ( a' :-> b' ) = a == a' && b == b'
 
-instance Eq ( Structure 'Graph a ) where
+instance Eq ( Structure 'Relation a ) where
     ( a :--- b ) == ( a' :--- b' ) = a == a' && fst b == fst b'
     ( a :--> b ) == ( a' :--> b' ) = a == a' && fst b == fst b'
     ( a :<-> b ) == ( a' :<-> b' ) = a == a' && fst b == fst b'
@@ -215,6 +227,12 @@ instance Eq ( Structure 'Graph a ) where
 
 instance Eq ( Mod "default" ) where
     ModDefault == ModDefault = True
+
+instance Eq ( Mod "relation type" ) where
+    RelationType == RelationType = True
+
+instance Eq ( Mod "relation weight" ) where
+    RelationWeight == RelationWeight = True
 
 --- - - - - - - - - - - - Foldable - - - - - - - - - - - ---
 instance Foldable ( Structure 'Simple ) where
@@ -250,7 +268,7 @@ instance Eq a => Ord ( Structure 'Tree a ) where
     ( Node _ _ _ ) <= EmptyTree = False
     a <= ( Node _ left' right' ) = a == left' || a == right'
 
-instance Ord ( Structure 'Graph a ) where
+instance Ord ( Structure 'Relation a ) where
     Noose a _ <= Noose b _ = a == b
     Noose a _ <= ( b :--- ( c, _ ) ) = a == b || a == c
     Noose a _ <= ( _ :--> ( c, _ ) ) = c == a
@@ -279,8 +297,14 @@ instance Ord ( Structure 'Graph a ) where
 
 --- - - - - - - - - - - - - Marker - - - - - - - - - - - - - ---
 -- this is a typical approach to derive Marker for every Mod example
-instance ( a ~ Mod "default" ) => Marker a where
+instance Marker ( Mod "default" ) where
     marker = ModDefault
+
+instance Marker ( Mod "relation type" ) where
+    marker = RelationType
+
+instance Marker ( Mod "relation weight" ) where
+    marker = RelationWeight
 
 --- - - - - - - - - - - - Equiv - - - - - - - - - - - - - ---
 instance Algebraic a => Equiv ( Mod "default" ) ( Structure 'Simple a ) where
@@ -288,7 +312,7 @@ instance Algebraic a => Equiv ( Mod "default" ) ( Structure 'Simple a ) where
     ( Order _ b === Order _ b' ) ModDefault = 
         not ( b' >= b ) || not ( b >= b' )
     ( Rhombus a ( g, h ) b === Rhombus a' ( g', h' ) b' ) ModDefault = 
-        ( Order a b === Order a' b' ) marker ||
+        ( Order a b === Order a' b' ) ModDefault ||
         g <= g' ||
         g <= h' ||
         h <= g' ||
